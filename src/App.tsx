@@ -15,6 +15,7 @@ import { isMobileDevice, requestWakeLock, releaseWakeLock } from './utils/device
 import { LayoutMetricsSync } from './utils/layoutMetricsSync';
 import { useLanguage } from './locales';
 import { HackerApiKeyInput } from './components/HackerApiKeyInput';
+import { NineRouterSettings } from './components/NineRouterSettings';
 import {
   Play,
   Download,
@@ -78,9 +79,9 @@ export default function App() {
     return '30s';
   });
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('cheat_clip_gemini_api_key') || '');
-  const [apiProvider, setApiProvider] = useState<'gemini' | 'openrouter'>(() => {
+  const [apiProvider, setApiProvider] = useState<'gemini' | 'openrouter' | 'nine_router'>(() => {
     const saved = localStorage.getItem('cheat_clip_api_provider');
-    return (saved === 'openrouter' || saved === 'gemini') ? saved : 'gemini';
+    return (saved === 'openrouter' || saved === 'gemini' || saved === 'nine_router') ? saved : 'gemini';
   });
   const [openRouterKey, setOpenRouterKey] = useState<string>(() => localStorage.getItem('cheat_clip_openrouter_key') || '');
   const [openRouterModel, setOpenRouterModel] = useState<string>(() => {
@@ -1804,6 +1805,9 @@ export default function App() {
           api_provider: apiProvider,
           openrouter_key: apiProvider === 'openrouter' ? (openRouterKey.trim() || undefined) : undefined,
           openrouter_model: apiProvider === 'openrouter' ? openRouterModel : undefined,
+          nine_router_key: apiProvider === 'nine_router' ? (localStorage.getItem('cheat_clip_nine_router_key') || '') : undefined,
+          nine_router_endpoint: apiProvider === 'nine_router' ? (localStorage.getItem('cheat_clip_nine_router_endpoint') || 'http://localhost:8000/v1') : undefined,
+          nine_router_model: apiProvider === 'nine_router' ? (localStorage.getItem('cheat_clip_nine_router_model') || 'default-model') : undefined,
           custom_prompt: customPrompt.trim() || undefined,
           range_start: rangeStartSecs,
           range_end: rangeEndSecs,
@@ -3649,7 +3653,7 @@ Transcript:
                 </div>
 
                 {/* Provider Selection Tabs */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', background: '#0a0a0f', padding: '3px', border: '1px solid rgba(255, 0, 255, 0.2)' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', background: '#0a0a0f', padding: '3px', border: '1px solid rgba(255, 0, 255, 0.2)' }}>
                   <button
                     type="button"
                     onClick={() => {
@@ -3695,6 +3699,29 @@ Transcript:
                     }}
                   >
                     {t.form.providerOpenRouter}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setApiProvider('nine_router');
+                      localStorage.setItem('cheat_clip_api_provider', 'nine_router');
+                      setError(null);
+                    }}
+                    style={{
+                      padding: '0.55rem 0.75rem',
+                      background: apiProvider === 'nine_router' ? '#ff00ff' : 'transparent',
+                      color: apiProvider === 'nine_router' ? '#000000' : 'rgba(255, 255, 255, 0.7)',
+                      border: 'none',
+                      fontWeight: 700,
+                      fontFamily: "'JetBrains Mono', monospace",
+                      fontSize: '0.75rem',
+                      cursor: 'pointer',
+                      letterSpacing: '0.04em',
+                      transition: 'all 0.15s ease',
+                      boxShadow: apiProvider === 'nine_router' ? '0 0 10px rgba(255, 0, 255, 0.4)' : 'none',
+                    }}
+                  >
+                    {t.form.providerNineRouter}
                   </button>
                 </div>
 
@@ -3783,6 +3810,10 @@ Transcript:
                         NOTE: <strong>{t.form.resilienceTip}</strong> {t.form.resilienceDesc}
                       </span>
                     </div>
+                  </>
+                ) : apiProvider === 'nine_router' ? (
+                  <>
+                    <NineRouterSettings loading={loading} onError={setError} />
                   </>
                 ) : (
                   <>
@@ -6102,6 +6133,7 @@ Transcript:
           videoDuration={result?.duration || 0}
           transcript={result?.transcript}
           onClose={() => setTrimmerClip(null)}
+          onApply={handleApplyAdjustedClipToResults}
           onDownload={async (adjustedClip) => {
             handleApplyAdjustedClipToResults(adjustedClip);
             await handleDownloadRawClip(adjustedClip);

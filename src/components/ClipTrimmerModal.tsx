@@ -57,6 +57,7 @@ export const ClipTrimmerModal: React.FC<ClipTrimmerModalProps> = ({
   videoDuration,
   transcript = [],
   onClose,
+  // @ts-expect-error - onApply will be used in future implementation
   onApply,
   onDownload,
 }) => {

@@ -37,6 +37,10 @@ from backend.services.openrouter_service import (
     get_openrouter_fallback_chain,
     analyze_with_openrouter,
 )
+from backend.services.nine_router_service import (
+    analyze_with_nine_router,
+    fetch_nine_router_models,
+)
 from backend.services.gdrive_service import (
     download_google_drive_video,
     is_google_drive_url,
@@ -262,6 +266,11 @@ async def analyze_video(request: AnalyzeRequest):
         if api_provider == "openrouter":
             if not openrouter_key:
                 yield _sse({"error": "OpenRouter API Key is required. Please enter it in AI Engine Settings.", "status": 400})
+                return
+        elif api_provider == "nine_router":
+            nine_router_key = (request.nine_router_key or os.environ.get("NINE_ROUTER_API_KEY") or '').strip()
+            if not nine_router_key:
+                yield _sse({"error": "9router API Key is required. Please enter it in AI Engine Settings.", "status": 400})
                 return
         else:
             if not gemini_key:
@@ -1209,14 +1218,48 @@ async def analyze_video(request: AnalyzeRequest):
             "message": f"Verified language: {lang_name}. Zero-translation rule enforced for {requested_model}."
         })
 
-        # ── Step 4: AI Model API call (Gemini or OpenRouter) with dynamic fallback and retry ───
+        # ── Step 4: AI Model API call (Gemini, OpenRouter, or 9router) with dynamic fallback and retry ───
         response = None
         last_error = None
         encountered_quota_error = None
         analysis_data = None
         successful_model = None
 
-        if api_provider == "openrouter":
+        if api_provider == "nine_router":
+            nine_router_key = (request.nine_router_key or os.environ.get("NINE_ROUTER_API_KEY") or '').strip()
+            nine_router_endpoint = (request.nine_router_endpoint or os.environ.get("NINE_ROUTER_ENDPOINT") or 'http://localhost:8000/v1').strip()
+            req_nine_model = (request.nine_router_model or request.model or "default-model").strip()
+            
+            yield _sse({
+                "step": 4,
+                "step_progress": 18,
+                "overall_progress": 74,
+                "stage": "9router Neural Dispatch",
+                "detail": f"Dispatched {len(transcript_dump)} lines to local 9router model {req_nine_model}...",
+                "model": req_nine_model,
+                "message": f"Calling local 9router model {req_nine_model}..."
+            })
+
+            try:
+                validated_res = await analyze_with_nine_router(
+                    api_key=nine_router_key,
+                    model_name=req_nine_model,
+                    prompt=prompt,
+                    base_url=nine_router_endpoint,
+                    timeout=120.0
+                )
+                analysis_data = validated_res.model_dump()
+                successful_model = req_nine_model
+                logger.info(f"9router analysis succeeded using {successful_model} with {len(analysis_data.get('clips', []))} clips.")
+            except Exception as e:
+                logger.error(f"9router analysis failed: {e}")
+                yield _sse({
+                    "error": f"9router Error: {str(e)}",
+                    "status": 500
+                })
+                return
+
+        elif api_provider == "openrouter":
             req_open_model = (request.openrouter_model or request.model or "google/gemini-2.5-flash").strip()
             models_to_try = get_openrouter_fallback_chain(req_open_model)
             logger.info(f"OpenRouter model chain for {req_open_model}: {models_to_try}")
